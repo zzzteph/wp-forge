@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace-manifest.json",
+  "name": "wp-forge",
+  "description": "Agentic WordPress-plugin vulnerability pipeline for Claude Code.",
+  "owner": {
+    "name": "zzzteph",
+    "url": "https://github.com/zzzteph"
+  },
+  "plugins": [
+    {
+      "name": "wp-forge",
+      "source": "./",
+      "description": "Pulls the wordpress.org plugin directory, hunts real reachable HIGH/CRITICAL PHP vulnerabilities, verifies them in a live WordPress container, and reports locally.",
+      "category": "security",
+      "keywords": [
+        "security",
+        "wordpress",
+        "plugins",
+        "php",
+        "vulnerability"
+      ]
+    }
+  ]
+}

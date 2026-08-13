@@ -1,0 +1,31 @@
+# Secrets & per-copy config values
+.env
+
+# Cloned target repo / extracted plugin sources (re-created on each run)
+/target/
+
+# Downloaded plugin .zip archives (re-fetchable from wordpress.org)
+/archives/
+
+# Pipeline state & scan artifacts
+/state/
+/logs/
+/reports/
+
+# Processed data & results — local only, so the repo stays code-only and
+# committable while you keep running from this folder (all auto-created on run):
+/db/                 # the SQLite plugin + vulnerability database
+/knowledge/          # per-plugin durable models (PROJECT/ENTRYPOINTS/… + model.json + findings.json)
+/pocs/*/             # generated PoC bundles (one folder per plugin/finding; each copies the plugin source)
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

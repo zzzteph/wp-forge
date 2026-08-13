@@ -1,0 +1,61 @@
+# WP-FORGE — configuration. Copy this file to config.yaml (in THIS folder).
+#
+# Two modes share this file:
+#   • WordPress plugin mode (DEFAULT) — opt/wp_workflow.md. Needs no target;
+#     it discovers plugins from wordpress.org itself. Tuned by the `wp:` block.
+#   • Legacy single-git-repo mode — opt/workflow.md. Set target.repo to switch.
+
+# --- WordPress plugin analysis (default mode) ------------------------------
+wp:
+  enabled: true
+  browse: updated          # directory slice: updated | popular | new | top-rated
+  since: ""                # ""=off; today | week | month | ISO date (YYYY-MM-DD) -> sync (and drain) plugins updated on/after it
+  drain: false             # true -> keep processing batches until the (scoped) queue is empty; never pause to ask
+  batch_size: 10           # plugins per batch (in drain mode this is the chunk size, not the total)
+  catalog_pages: 3         # how many API pages to refresh into the DB each cycle (ignored when `since` is set)
+  per_page: 100            # API page size when syncing the catalog (max 250 upstream)
+  min_active_installs: 0   # skip plugins below this install count (0 = analyze all)
+  reanalyze_on_new_version: true   # re-scan a plugin only when a newer version ships
+
+# --- Legacy git-repo mode (optional) ---------------------------------------
+target:
+  # Leave empty for WordPress mode. A git URL here switches to opt/workflow.md.
+  # For private repos use an authenticated URL, e.g.
+  #   https://<user>:<token>@github.com/owner/repo.git
+  repo: ""                       # e.g. https://github.com/owner/repo.git
+  branch: ""                     # blank = default branch
+  depth: null                    # null = full history (needed for secret scanning); or an int for shallow
+
+analysis:
+  # How aggressive the agentic pass is. The skill reads these.
+  focus:                         # optional: bias analysis toward these areas
+    - authentication / authorization
+    - input validation / injection (SQLi, command, template, deserialization)
+    - SSRF / path traversal / file upload
+    - secrets & credential handling
+    - insecure crypto & session management
+    - access control / IDOR
+  changed_only_after_first_scan: false  # always re-analyze the latest version as a full baseline (we don't keep old plugin files)
+  max_verify_per_cycle: 25       # safety cap only — the workflow verifies EVERY recorded finding
+  max_analyzer_agents: 6         # cap concurrent code-analyzer subagents
+  only_exploitable_valuable: true  # ignore theoretical/best-practice noise (bare MD5, headers, …)
+  user_reachable_only: true        # only analyze sinks reachable from a user-facing entry point
+
+report:
+  # NOTIFY-ONLY + fully LOCAL. Findings and progress are printed to the console
+  # and appended to knowledge/<slug>/notifications.log — no external service is
+  # contacted. Only CRITICAL/HIGH that are exploitable AND valuable are recorded.
+  min_severity: HIGH             # hard floor for recording/emitting anything
+  send_verified: true            # emit as soon as reachability/repro is confirmed
+  send_high_sev_unverified: true # also flag HIGH/CRITICAL candidates awaiting/failing verification
+  min_severity_unverified: HIGH  # threshold for the "unverified candidate" notices
+  cycle_summary: true            # emit a one-line summary each cycle
+  attach_report_file: true       # reference a markdown report file for confirmed findings
+  progress: true                 # emit per-phase progress lines so you can watch a run live
+  progress_silent: true          # …tagged as progress (not a finding/summary notice)
+
+verify:
+  # Dynamic-verification sandbox behavior.
+  enabled: true
+  network_egress: true           # allow the target container to reach the internet (often needed to boot)
+  boot_timeout_seconds: 120

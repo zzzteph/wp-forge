@@ -1,0 +1,55 @@
+# WP-FORGE — active config for THIS copy.
+# Default mode analyzes WordPress.org plugins (opt/wp_workflow.md); the legacy
+# single-git-repo mode (opt/workflow.md) still works if you set target.repo.
+# See config.example.yaml for all options and comments.
+
+# --- WordPress plugin analysis (default mode) ------------------------------
+wp:
+  enabled: true
+  browse: updated          # which slice of the directory: updated | popular | new | top-rated
+  since: today             # ""=off; today | week | month | ISO date (YYYY-MM-DD) -> sync (and drain) plugins updated on/after it
+  drain: true              # true -> keep processing batches until the (scoped) queue is empty; never pause to ask
+  batch_size: 3            # plugins per batch (in drain mode this is the chunk size, not the total)
+  catalog_pages: 1         # how many API pages to refresh into the DB each cycle (ignored when `since` is set)
+  per_page: 50             # API page size when syncing the catalog
+  min_active_installs: 0   # skip plugins below this install count (0 = analyze all)
+  reanalyze_on_new_version: true   # re-scan a plugin only when a newer version ships
+
+# --- Legacy git-repo mode (optional) ---------------------------------------
+target:
+  repo: ""            # leave empty for WordPress mode; a git URL switches to opt/workflow.md
+  branch: ""
+  depth: null
+
+analysis:
+  focus:
+    - authentication / authorization
+    - input validation / injection (SQLi, command, template, deserialization)
+    - SSRF / path traversal / file upload
+    - secrets & credential handling
+    - insecure crypto & session management
+    - access control / IDOR
+  changed_only_after_first_scan: false   # always re-analyze the latest version as a full baseline (we don't keep old files)
+  max_verify_per_cycle: 25       # safety cap only — the workflow verifies EVERY recorded finding
+  max_analyzer_agents: 6
+  # Only user-reachable, exploitable AND valuable issues count. Never record
+  # theoretical / best-practice noise (bare MD5, missing headers, etc.).
+  only_exploitable_valuable: true
+  user_reachable_only: true
+
+report:
+  # Notify-only + fully LOCAL: findings and progress are printed to the console
+  # and appended to knowledge/<slug>/notifications.log. No external service.
+  min_severity: HIGH             # hard floor — only CRITICAL/HIGH are ever recorded or emitted
+  send_verified: true
+  send_high_sev_unverified: true
+  min_severity_unverified: HIGH
+  cycle_summary: true
+  attach_report_file: true
+  progress: true                 # emit per-phase progress lines so you can watch a run
+  progress_silent: true          # …tagged as progress (not a finding/summary notice)
+
+verify:
+  enabled: true
+  network_egress: true
+  boot_timeout_seconds: 120
