@@ -5,6 +5,25 @@ All notable changes to **wp-forge** are documented here. The format follows
 [Semantic Versioning](https://semver.org). The version of record is
 [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json).
 
+## [0.4.0] — 2026-08-14
+
+### Added
+- **Safe-PoC guardrail** — a mandatory "prove control, never exploit" rule binding
+  both live verification and the shipped `poc.py`. SQL injection must be confirmed
+  with a non-exfiltrating probe (boolean/time/error, or a `UNION` canary /
+  `@@version`) — no dumping `wp_users`/hashes/secrets, no enumerating tables, strictly
+  read-only (no writes/DDL, no `INTO OUTFILE`/`LOAD_FILE`). Extended in the same
+  spirit to RCE / traversal / upload / SSRF, with sandbox-only targets and evidence
+  redaction.
+
+### Changed
+- **Drain the whole scope, not a fixed chunk** — in drain mode the batch now equals
+  the entire scoped set, so `/wp-forge today` analyzes *every* plugin updated today
+  (not 3–5). `wp.batch_size` is now only the chunk for a bare, unscoped `/wp-forge`.
+- **Whole-catalog default** — `config.yaml` ships with `since: ""`, `catalog_pages: 700`,
+  `per_page: 100` so a sync loads the entire wordpress.org directory (~70k plugins)
+  into the DB for `all`/drain runs. Lower `catalog_pages` after the first full sync.
+
 ## [0.3.0] — 2026-08-14
 
 ### Added
