@@ -353,6 +353,40 @@ The verifier follows `.claude/agents/finding-verifier.md`, adapted to WordPress:
   / benign command side effect), file upload (drop a benign file and fetch it),
   SSRF (loopback sentinel), traversal (read a should-be-blocked file). Keep
   payloads benign — proof, not damage.
+
+#### Safe-PoC guardrail — prove control, never exploit (MANDATORY, all PoCs)
+A PoC exists **only** to show the bug is real and reachable. It must never become a
+working attack. This binds both the live verification and the shipped `poc.py`.
+
+- **SQL injection — confirm without exfiltrating:**
+  - Prove control with a **non-exfiltrating probe**: a boolean differential
+    (`1=1` vs `1=2`), a time delay (`SLEEP(N)`/`BENCHMARK`), an error-based type
+    mismatch, or a `UNION` that returns a **fixed unique canary** (e.g.
+    `WPFORGE-POC-<finding-id>`) or a harmless server fact (`@@version`,
+    `database()`). Reading one non-sensitive scalar to prove control is fine.
+  - **Do NOT dump data.** Never `SELECT` from `wp_users`/`wp_usermeta`, password
+    hashes, secret keys/salts, auth tokens, PII, or option secrets; never
+    enumerate or page table contents beyond the single canary.
+  - **Strictly read-only.** No `INSERT`/`UPDATE`/`DELETE`/`REPLACE`/`TRUNCATE`/
+    `DROP`/`ALTER`/`GRANT`, no stacked/multi-statement queries that change state,
+    and no `INTO OUTFILE`/`DUMPFILE`/`LOAD_FILE` (that is file write/read/RCE
+    escalation, not SQLi proof).
+- **Other classes, same spirit:** RCE → a unique arithmetic/echo marker or a
+  benign side effect (touch a sentinel file), never a real command, reverse shell,
+  or persistence. Traversal / file read → read a planted non-secret sentinel (or a
+  public file) to prove the boundary crossing; demonstrate *reach* to
+  `wp-config.php` without printing its secrets — **redact** keys/salts/DB creds in
+  evidence. File upload → drop a benign **inert** file (a text marker, not a web
+  shell) and fetch it. SSRF → hit a loopback sentinel, never pull internal or
+  cloud-metadata data.
+- **Sandbox only.** Every PoC runs against the local ephemeral WordPress+MySQL
+  sandbox (dummy data) — the bundle's `docker-compose.yml` is the only allowed
+  target. Never point a PoC at a live or third-party site.
+- **Evidence hygiene.** Record the canary/marker and the differential (or timing)
+  as proof — never captured data. If a probe incidentally returns sensitive rows,
+  do not store or print them: log "control proven via `<probe>`" and redact.
+- **Minimal & reversible.** One request that proves it; if any state changes
+  despite care, note it and let the sandbox teardown reset it.
 Apply the verdict:
 ```bash
 python scripts/pipeline.py set-status <id> verified  --evidence "<request + [SECANAL] log excerpt>"

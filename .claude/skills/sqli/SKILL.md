@@ -38,6 +38,19 @@ While executing the workflow, replace the "what to report" bar with this:
   query sink; a candidate that can't be reached by an unauth/non-admin principal
   is out of scope.
 
+**Safe-PoC guardrail (enforced — read the workflow's "Safe-PoC guardrail"
+section).** The SQLi PoC must **prove control, never exfiltrate**: confirm with a
+non-exfiltrating probe — a boolean differential (`1=1` vs `1=2`), a time delay
+(`SLEEP`/`BENCHMARK`), an error-based type mismatch, or a `UNION` returning a fixed
+unique canary (`WPFORGE-POC-<id>`) or a harmless server fact (`@@version`,
+`database()`). **Do not** dump `wp_users`/`wp_usermeta`, password hashes, secret
+keys/salts, tokens, or PII, and **do not** enumerate table contents beyond the
+canary. **Strictly read-only** — no `INSERT`/`UPDATE`/`DELETE`/`DROP`/`ALTER`, no
+stacked state-changing queries, no `INTO OUTFILE`/`DUMPFILE`/`LOAD_FILE`. Local
+ephemeral sandbox only; keep captured data out of evidence (log "control proven
+via `<probe>`" and redact). A demonstrated, controlled injection is a complete
+proof — you never need to steal data to earn the finding.
+
 Keep **every other guardrail** from the workflow: notify-only + fully local
 (console + `knowledge/<slug>/notifications.log`), a runnable **PoC + Docker
 bundle** for each in-scope HIGH/CRITICAL, live **WordPress-sandbox verification**
