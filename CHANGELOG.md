@@ -5,6 +5,24 @@ All notable changes to **wp-forge** are documented here. The format follows
 [Semantic Versioning](https://semver.org). The version of record is
 [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json).
 
+## [0.3.0] — 2026-08-14
+
+### Added
+- **Focused hunt modes** — four scope-narrowed variants of the pipeline, each
+  reusing the full run (catalog sync, download, modeling, sandbox verification,
+  durable DB, notify-only reporting) but recording only in-scope findings:
+  - **`/wp-forge:sqli`** — SQL injection only, unauthenticated or basic non-admin
+    (admin-only SQLi dropped).
+  - **`/wp-forge:unauth`** — any class, but only when reachable with no login.
+  - **`/wp-forge:path-trav`** — unauthenticated path traversal / arbitrary file
+    read only.
+  - **`/wp-forge:critical`** — the seven strictly-unauthenticated, high-impact
+    classes that dominate real WordPress-plugin CRITICAL/HIGH CVEs (SQLi, broken
+    access control / missing authorization, arbitrary file upload/write, path
+    traversal / arbitrary file read, RCE / code injection, LFI/RFI, SSRF).
+- The focused modes **share the analyzed ledger** with `/wp-forge` — they mark a
+  plugin analyzed at its version, so the window drains still terminate.
+
 ## [0.2.0] — 2026-08-13
 
 ### Added
