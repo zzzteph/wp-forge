@@ -170,14 +170,21 @@ next. Keep a short `TodoWrite` plan of the batch when interactive.
 explicit *"analyze all"* / `/wp-forge all`, or `config.yaml → wp.drain: true`. In
 any of these, do **not** stop after one batch and **never** pause to ask whether
 to continue, confirm, or clarify anything — just run to completion and return the
-results. Drain the queue:
+results. **In drain mode the batch is the WHOLE scope, not `wp.batch_size`.**
+`wp.batch_size` is only the chunk for a bare, unscoped `/wp-forge` (§10). When a
+scope is set — a window, `all`, or `wp.drain: true` — you analyze *every* plugin
+in it: `/wp-forge today` means every plugin updated today, not 3 or 5. First
+measure the scope, then pull all of it:
 ```bash
 # <window> is today|week|month (or an ISO date); omit --updated-since to drain the whole catalog
-python scripts/wp.py pending --updated-since <window>       # how many remain in-window
+python scripts/wp.py pending --updated-since <window>       # N = how many remain in-scope
 ```
-Loop until the queue is empty:
-1. `python scripts/wp.py next-batch --count <wp.batch_size> --updated-since <window>`
-   (omit `--updated-since` if the scope is the whole catalog).
+Loop until the queue is empty (size `--count` to the whole scope, not a small chunk):
+1. `python scripts/wp.py next-batch --count <N> --updated-since <window>`
+   — pass the `pending` count above (or a large number like `100000`) so one pull
+   returns the *entire* remaining scope; omit `--updated-since` for the whole catalog.
+   For a very large scope (e.g. the full catalog) you may iterate in large blocks
+   (say 500) purely to emit progress — never a fixed 3/5, and never stop to ask.
 2. If it returns `[]`, **stop the loop** — the scope is fully analyzed.
 3. Otherwise run §3–§9 for every plugin in the returned batch, then go back to 1.
 Because the DB marks each `slug@version` analyzed as you go, `next-batch` returns

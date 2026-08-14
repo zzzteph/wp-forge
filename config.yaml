@@ -7,11 +7,13 @@
 wp:
   enabled: true
   browse: updated          # which slice of the directory: updated | popular | new | top-rated
-  since: today             # ""=off; today | week | month | ISO date (YYYY-MM-DD) -> sync (and drain) plugins updated on/after it
+  since: ""                # ""=off (whole catalog); today | week | month | ISO date -> scope sync+drain to plugins updated on/after it
   drain: true              # true -> keep processing batches until the (scoped) queue is empty; never pause to ask
-  batch_size: 3            # plugins per batch (in drain mode this is the chunk size, not the total)
-  catalog_pages: 1         # how many API pages to refresh into the DB each cycle (ignored when `since` is set)
-  per_page: 50             # API page size when syncing the catalog
+  batch_size: 10           # ONLY the chunk for a bare, unscoped /wp-forge. In drain mode (window / all / drain:true)
+                           # the batch = the WHOLE scope, so `/wp-forge today` analyzes EVERY plugin updated today, not this many.
+  catalog_pages: 700       # API pages to sync into the DB each cycle. ~697 pages @ per_page 100 = the ENTIRE directory (~70k plugins).
+                           # Lower to e.g. 5 after the first full sync (the DB keeps all 70k; you only need fresh pages to catch new updates).
+  per_page: 100            # API page size when syncing the catalog (100 = max)
   min_active_installs: 0   # skip plugins below this install count (0 = analyze all)
   reanalyze_on_new_version: true   # re-scan a plugin only when a newer version ships
 
