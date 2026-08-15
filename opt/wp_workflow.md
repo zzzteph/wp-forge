@@ -70,10 +70,13 @@ loop to next plugin ─► cycle summary + nuke sandbox + wipe scratch (archives
 - **Stay in scope.** Touch only this folder and the Docker sandbox. Never modify
   or re-upload a plugin. The only outbound traffic is the WP.org API + archive
   download; findings are reported locally, never sent anywhere.
-- **Budgets** (`config.yaml`): `wp.batch_size` plugins per cycle; per plugin at
-  most `analysis.max_analyzer_agents` analysis subagents and
-  `analysis.max_verify_per_cycle` verification attempts. Prefer highest severity /
-  most reachable.
+- **Serial by design — one plugin, one pass, at a time.** No parallelism anywhere:
+  never process more than one plugin at once, never fan out multiple analysis
+  subagents, never launch background jobs / driver scripts / plugin "blocks". Each
+  plugin is downloaded and analyzed to completion before the next begins.
+  `analysis.max_verify_per_cycle` is a safety cap on verification attempts;
+  `wp.batch_size` only sizes a bare, unscoped `/wp-forge`. Prefer highest severity /
+  most reachable first.
 - **Idempotency.** The DB (`scripts/wpdb.py`) tracks which `slug@version` are
   analyzed and which findings were reported. Re-analyze a plugin only when a new
   version exists. Only **new** vulns and **one-time mitigations** are sent.
@@ -147,7 +150,9 @@ subagent with the Agent tool:
   instructions, plus `docs/WP_METHODOLOGY.md` and `sast/wp_signatures.md` for
   WordPress specifics,"* then the assignment.
 - **Last resort** (no Agent tool): do the role's work inline following the brief.
-Run independent subagents in parallel (one message, multiple Agent calls).
+Run the roles **one at a time** — at most one subagent in flight, never multiple
+Agent calls in a single message. No parallelism anywhere; doing the work inline
+(no subagent at all) is perfectly fine and often simplest.
 
 ## 2. Preflight — refresh the catalog & pick the batch
 ```bash
@@ -175,35 +180,34 @@ from `analyzed_version`, ordered by `last_updated`.
   whose first publish was in-window. An explicit ISO date (`YYYY-MM-DD`) works too.
 - Otherwise use the plain `sync` above (newest `wp.catalog_pages` pages).
 
-**Then loop over the batch.** For each plugin `<slug>` run §3–§9 fully before the
-next. Keep a short `TodoWrite` plan of the batch when interactive.
+**Then process the scope strictly ONE PLUGIN AT A TIME — serial, in THIS session.**
+There is **no parallelism and no external orchestration** anywhere in a run. You
+download one plugin, run §3–§9 on it to completion, record it, discard its scratch,
+and only then move to the next slug. Do **not** spawn background jobs (`nohup`,
+trailing `&`, a `driver`/`runner`/`weekly_*` script), process "blocks" of plugins,
+or work on more than one plugin at once. The whole run is a plain sequential loop
+you drive yourself, in-session.
 
 ### Drain mode — analyze the WHOLE scoped set unattended (never ask to continue)
-**A window scope (`today` / `week` / `month`) drains by default** — as does an
-explicit *"analyze all"* / `/wp-forge all`, or `config.yaml → wp.drain: true`. In
-any of these, do **not** stop after one batch and **never** pause to ask whether
-to continue, confirm, or clarify anything — just run to completion and return the
-results. **In drain mode the batch is the WHOLE scope, not `wp.batch_size`.**
-`wp.batch_size` is only the chunk for a bare, unscoped `/wp-forge` (§10). When a
-scope is set — a window, `all`, or `wp.drain: true` — you analyze *every* plugin
-in it: `/wp-forge today` means every plugin updated today, not 3 or 5. First
-measure the scope, then pull all of it:
+A window scope (`today` / `week` / `month`), an explicit *"analyze all"* /
+`/wp-forge all`, or `config.yaml → wp.drain: true` drains by default: analyze
+*every* plugin in the scope, **one after another**, and **never** pause to ask
+whether to continue, confirm, or clarify. `/wp-forge today` means every plugin
+updated today — but still one at a time, never 3/5 and never a background batch.
+`wp.batch_size` only applies to a bare, unscoped `/wp-forge` (§10). Get the list,
+then walk it:
 ```bash
-# <window> is today|week|month (or an ISO date); omit --updated-since to drain the whole catalog
-python scripts/wp.py pending --updated-since <window>       # N = how many remain in-scope
+# <window> is today|week|month (or an ISO date); omit --updated-since for the whole catalog
+python scripts/wp.py pending    --updated-since <window>                 # N = how many remain in-scope
+python scripts/wp.py next-batch --count <N> --updated-since <window>     # the full list of slugs to walk
 ```
-Loop until the queue is empty (size `--count` to the whole scope, not a small chunk):
-1. `python scripts/wp.py next-batch --count <N> --updated-since <window>`
-   — pass the `pending` count above (or a large number like `100000`) so one pull
-   returns the *entire* remaining scope; omit `--updated-since` for the whole catalog.
-   For a very large scope (e.g. the full catalog) you may iterate in large blocks
-   (say 500) purely to emit progress — never a fixed 3/5, and never stop to ask.
-2. If it returns `[]`, **stop the loop** — the scope is fully analyzed.
-3. Otherwise run §3–§9 for every plugin in the returned batch, then go back to 1.
-Because the DB marks each `slug@version` analyzed as you go, `next-batch` returns
-the *next* unanalyzed chunk each iteration and shrinks to `[]` — that empty result
-is the only "am I done?" signal you need, so you never have to ask the user.
-Emit a progress ping at each batch boundary (`pending` count remaining). This is
+Walk the returned slugs **sequentially**:
+1. Take the next slug; run §3–§9 fully (download → model → hunt → verify → record).
+2. Discard that plugin's scratch, emit a one-line progress ping, take the next slug.
+3. At the end of the list, re-query `next-batch`; if it returns `[]`, **stop** — the
+   scope is fully analyzed. Each recorded (or `error`-skipped) plugin drops out of
+   the queue, so it shrinks to `[]` on its own.
+That empty result is the only "am I done?" signal — you never ask. This is
 resumable: if the run is interrupted, starting again continues from what's left.
 The one-batch-then-stop rule below (§10) applies only to a bare, unscoped
 `/wp-forge` (no window) — window/`all`/`wp.drain` runs always drain.
@@ -301,10 +305,10 @@ missing `current_user_can`, `wp_ajax_nopriv_*`, `permission_callback` =>
 not findings.**
 
 ## 6. Phase C — Authorization analysis (highest yield for WP plugins)
-Follow the **authz-analyzer** brief and `docs/WP_METHODOLOGY.md`. Spawn authz
-subagents (split by area, up to budget), each given the model + the authz
-hotspots + (incremental) `changed_files`. Walk every entry point for the
-WordPress classes:
+Follow the **authz-analyzer** brief and `docs/WP_METHODOLOGY.md`. Run this as a
+**single** authz pass for the plugin (one subagent, or inline) — no splitting into
+parallel workers — given the model + the authz hotspots + (incremental)
+`changed_files`. Walk every entry point for the WordPress classes:
 - **Missing/incorrect capability check** (broken function-level authz / priv-esc)
   — an action reserved for admin reachable by a subscriber or anonymous.
 - **Missing nonce / CSRF** on a state-changing action **that also lacks a real
@@ -321,9 +325,10 @@ Each keeper carries a **two-principal PoC** (principal A = subscriber or
 anonymous, B/admin = the privileged effect). These become the finding's fields.
 
 ## 7. Phase D — Data-flow analysis (PHP injection classes)
-Follow the **code-analyzer** brief with `sast/wp_signatures.md`. Fan out one
-subagent per hot area, up to `max_analyzer_agents`, in parallel. Trace untrusted
-input → dangerous sink for the WordPress/PHP classes:
+Follow the **code-analyzer** brief with `sast/wp_signatures.md`. Run this as a
+**single** data-flow pass for the plugin (one subagent, or inline) — walk the hot
+areas one after another, never fanned out in parallel. Trace untrusted input →
+dangerous sink for the WordPress/PHP classes:
 - **SQL injection** — `$wpdb->query/get_results/get_var/get_row/prepare` with
   interpolated input instead of `$wpdb->prepare` placeholders.
 - **RCE / code injection** — `eval`, `assert`, `create_function`,

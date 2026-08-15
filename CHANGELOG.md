@@ -5,6 +5,16 @@ All notable changes to **wp-forge** are documented here. The format follows
 [Semantic Versioning](https://semver.org). The version of record is
 [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json).
 
+## [0.6.0] — 2026-08-16
+
+### Changed
+- **Strictly serial execution — one plugin at a time.** The workflow is now an
+  explicit sequential loop: download a plugin, analyze it to completion, record it,
+  then the next. No parallelism anywhere — no parallel analysis subagents, no
+  background jobs / driver scripts, no plugin "blocks". `max_analyzer_agents` is set
+  to `1`; the drain still covers the whole scope (`/wp-forge today` = every plugin
+  updated today), just one after another.
+
 ## [0.5.0] — 2026-08-14
 
 ### Added

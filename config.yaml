@@ -33,7 +33,7 @@ analysis:
     - access control / IDOR
   changed_only_after_first_scan: false   # always re-analyze the latest version as a full baseline (we don't keep old files)
   max_verify_per_cycle: 25       # safety cap only — the workflow verifies EVERY recorded finding
-  max_analyzer_agents: 6
+  max_analyzer_agents: 1         # SERIAL: one analysis pass at a time, no parallel subagents (plugins are processed one by one)
   # Only user-reachable, exploitable AND valuable issues count. Never record
   # theoretical / best-practice noise (bare MD5, missing headers, etc.).
   only_exploitable_valuable: true
