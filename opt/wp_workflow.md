@@ -92,6 +92,19 @@ loop to next plugin ─► cycle summary + nuke sandbox + wipe scratch (archives
 - **Always tear down** the Docker sandbox at the end (§9), even on error.
 - **Time-box.** If a plugin won't install/run after reasonable effort, record
   HIGH/CRITICAL candidates as unverified and move on to the next plugin.
+- **Hang = skip; never intervene by hand.** Every per-plugin step is bounded — the
+  downloader self-caps time and size (`wp.py` raises and the plugin is skipped),
+  and you must time-box any scan/verify (`timeout <s> …`). If a step hangs or
+  fails — a slow/huge download, a scan that won't finish, a plugin that won't
+  install — **mark that one plugin `error`
+  (`python scripts/wpdb.py set-status --slug <slug> --status error --error "<why>"`)
+  and move to the next**; it is retried on a later run. Do
+  **not** `pkill`/`kill` processes, inspect process trees, edit or "harden"
+  driver/runner scripts, `rm` anything outside this plugin's own `archives/` +
+  `target/` scratch, restart the block, or pause to ask what to do — those
+  improvisations are exactly what make bulk runs unreliable. A per-plugin failure
+  is a *skipped item, not a stop*; the only "done" signal is `next-batch`
+  returning `[]`.
 - **Show progress.** A status line per phase to stdout (and appended to the log),
   tagged as a progress line via `notify --silent` if `report.progress`.
 
@@ -207,9 +220,15 @@ SECANAL_TARGET_REPO="https://wordpress.org/plugins/<slug>/" python scripts/pipel
 # PowerShell (single call)
 $env:SECANAL_TARGET_REPO="https://wordpress.org/plugins/<slug>/"; python scripts\pipeline.py <...>
 ```
-Download + extract + version-diff + shape in one call:
+Download + extract + version-diff + shape in one call. `prep` is self-limiting
+(§1), but wrap it in `timeout` too so extraction/shape can never stall — and if it
+fails or times out, **skip this plugin and go straight to the next** (never retry
+in place, never investigate, never ask):
 ```bash
-python scripts/wp.py prep --slug <slug>
+if ! timeout 150 python scripts/wp.py prep --slug <slug>; then
+    python scripts/wpdb.py set-status --slug <slug> --status error --error "prep failed/timeout"
+    continue            # next plugin — a skipped item is not a stop (§1)
+fi
 ```
 Read the JSON: `version`, `shape`, `plugin_root` (the extracted plugin at
 `target/wordpress.org/plugins/<slug>/`). **Always analyze the current version as a
@@ -220,9 +239,11 @@ already holds findings for an earlier version of this slug, reconcile the fresh
 results against those DB records (§8) — not against stored files, which we don't
 keep.
 
-Mark it in progress: `python scripts/wpdb.py` has no setter CLI; use the module
-via `wp.py`/agents. (Status becomes `downloaded` after prep and `analyzed` after
-`wp.py record` in §9.)
+Mark it in progress:
+`python scripts/wpdb.py set-status --slug <slug> --status analyzing`.
+(Status becomes `downloaded` after prep, `analyzing` during the phases, `error` on
+a skipped failure — retried on a later run — and `analyzed` after `wp.py record`
+in §9.)
 
 ## 4. Phase A — Comprehension → durable plugin model
 Produce/refresh `knowledge/wordpress.org/plugins/<slug>/{PROJECT,ENTRYPOINTS,ROLES,AUTH}.md`
@@ -260,7 +281,15 @@ on incremental runs.
 Run the signature sweep from `sast/wp_signatures.md` with ripgrep over the scope
 (whole plugin on baseline; `changed_files` + neighbours on incremental):
 ```bash
-rg -n --no-heading -e '<sink-pattern>' target/wordpress.org/plugins/<slug>/ -g '*.php'
+# Bounded + focused: server-side PHP only, skip vendored/generated/minified bulk,
+# cap file size, and time-box the sweep so a giant/minified plugin (e.g. w3-total-cache)
+# can't stall the scan with pathological lines. These guards are built in — do NOT
+# hand-tune regex or kill a slow grep; if it still times out, skip the plugin (§1).
+timeout 120 rg -n --no-heading -e '<sink-pattern>' \
+  target/wordpress.org/plugins/<slug>/ \
+  -g '*.php' --max-filesize 2M \
+  -g '!**/{vendor,node_modules,dist,build,assets,languages,tests}/**' \
+  -g '!**/*.min.*'
 ```
 For each hit, grep nearby **sources** (`$_GET/$_POST/$_REQUEST/$_COOKIE/$_FILES`,
 `file_get_contents('php://input')`, REST `$request->get_param`) to rank

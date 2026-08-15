@@ -31,6 +31,7 @@ import json
 import os
 import shutil
 import sys
+import time
 import urllib.parse
 import urllib.request
 import zipfile
@@ -68,6 +69,13 @@ configure_stdio()
 API = "https://api.wordpress.org/plugins/info/1.2/"
 ARCHIVE_DIR = ROOT / "archives"
 UA = "wp-forge/1.0 (+https://wordpress.org/plugins/)"
+
+# Hang guards — a single big/slow plugin must never stall the pipeline. Each is a
+# hard bound; when hit, download() raises so `wp.py prep` fails fast and the
+# caller skips this plugin (retried on a later run). Override via env if needed.
+DOWNLOAD_TIMEOUT_S = int(os.environ.get("WP_DOWNLOAD_TIMEOUT_S", "90"))   # total wall-clock for one archive
+MAX_ARCHIVE_MB     = int(os.environ.get("WP_MAX_ARCHIVE_MB", "80"))       # compressed download cap
+MAX_EXTRACT_MB     = int(os.environ.get("WP_MAX_EXTRACT_MB", "400"))      # uncompressed extract cap (zip-bomb / giant plugin)
 
 # Fields we want back from query_plugins (keep the payload lean).
 QUERY_FIELDS = {
@@ -203,6 +211,11 @@ def _extract_zip(zip_path: Path, dest: Path) -> Path:
         shutil.rmtree(dest, ignore_errors=True)
     dest.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path) as zf:
+        total_uncompressed = sum(i.file_size for i in zf.infolist())
+        if total_uncompressed > MAX_EXTRACT_MB * 1024 * 1024:
+            raise RuntimeError(
+                f"extracted size {total_uncompressed // 1048576}MB exceeds "
+                f"{MAX_EXTRACT_MB}MB cap — skipping oversized plugin")
         names = [n for n in zf.namelist() if not n.endswith("/")]
         tops = {n.split("/", 1)[0] for n in names}
         strip = (len(tops) == 1)
@@ -241,8 +254,37 @@ def download(slug: str, version: str | None = None,
     zip_path = ARCHIVE_DIR / slug / fname
     zip_path.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(download_link, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=120) as resp, open(zip_path, "wb") as fh:
-        shutil.copyfileobj(resp, fh)
+    max_bytes = MAX_ARCHIVE_MB * 1024 * 1024
+    deadline = time.monotonic() + DOWNLOAD_TIMEOUT_S
+    try:
+        # timeout=30 kills a fully stalled socket (no bytes for 30s); the deadline
+        # below kills a slow-drip that trickles bytes but never finishes in time.
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            clen = resp.headers.get("Content-Length")
+            if clen and int(clen) > max_bytes:
+                raise RuntimeError(
+                    f"archive is {int(clen)//1048576}MB > {MAX_ARCHIVE_MB}MB cap — skipping {slug}")
+            got = 0
+            with open(zip_path, "wb") as fh:
+                while True:
+                    if time.monotonic() > deadline:
+                        raise TimeoutError(
+                            f"download exceeded {DOWNLOAD_TIMEOUT_S}s — skipping {slug}")
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    got += len(chunk)
+                    if got > max_bytes:
+                        raise RuntimeError(
+                            f"download passed {MAX_ARCHIVE_MB}MB cap — skipping {slug}")
+                    fh.write(chunk)
+    except Exception:
+        # never leave a half-written archive behind for the next step to trip on
+        try:
+            zip_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     root = _extract_zip(zip_path, TARGET_DIR)
     return {"slug": slug, "archive": str(zip_path), "download_link": download_link,
             "plugin_root": str(root), "bytes": zip_path.stat().st_size}

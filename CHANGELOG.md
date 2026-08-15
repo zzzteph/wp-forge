@@ -5,6 +5,26 @@ All notable changes to **wp-forge** are documented here. The format follows
 [Semantic Versioning](https://semver.org). The version of record is
 [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json).
 
+## [0.5.0] — 2026-08-14
+
+### Added
+- **Hang guards** — a single big or slow plugin can no longer stall a run. `wp.py`
+  downloads are self-limiting (90s wall-clock, 80MB compressed / 400MB extracted
+  caps, overridable via `WP_DOWNLOAD_TIMEOUT_S` / `WP_MAX_ARCHIVE_MB` /
+  `WP_MAX_EXTRACT_MB`) and fail fast; the grep sweep is time-boxed (`timeout 120`)
+  and skips vendored / generated / minified bulk and files >2MB (fixes the
+  `w3-total-cache` minified-file stall).
+- **`wpdb.py set-status`** — mark a plugin `error` from the CLI; since `next-batch`
+  re-picks `error` plugins, a skipped one is automatically retried on a later run.
+
+### Changed
+- **Reliability contract — hang means skip, never intervene.** The workflow now
+  states explicitly that a stalled/failed per-plugin step is marked `error` and the
+  run moves on. It must **never** `pkill`/kill processes, inspect process trees, edit
+  or "harden" driver scripts, broad-`rm`, restart a block, or pause to ask — the
+  improvisations that made bulk drains unreliable. A per-plugin failure is a skipped
+  item, not a stop.
+
 ## [0.4.0] — 2026-08-14
 
 ### Added

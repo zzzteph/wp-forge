@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "wp-forge",
   "description": "Agentic WordPress-plugin vulnerability pipeline: pulls the wordpress.org directory, downloads plugins, hunts real reachable HIGH/CRITICAL PHP vulnerabilities, verifies them in a live WordPress+MySQL container, keeps a durable DB, and reports locally (never touches the plugins or their authors).",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "author": {
     "name": "zzzteph",
     "url": "https://github.com/zzzteph"

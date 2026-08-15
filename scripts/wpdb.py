@@ -322,6 +322,8 @@ def main() -> None:
     p = sub.add_parser("findings"); p.add_argument("--slug"); p.add_argument("--min-sev"); p.add_argument("--status"); p.add_argument("--limit", type=int, default=50)
     p = sub.add_parser("next-batch"); p.add_argument("--count", type=int, default=10); p.add_argument("--min-active-installs", type=int, default=0)
     p = sub.add_parser("show"); p.add_argument("--slug", required=True)
+    p = sub.add_parser("set-status"); p.add_argument("--slug", required=True)
+    p.add_argument("--status", required=True); p.add_argument("--error")
     args = ap.parse_args()
 
     if args.cmd == "init":
@@ -347,6 +349,10 @@ def main() -> None:
             raise SystemExit(f"unknown plugin: {args.slug}")
         p["findings"] = query_findings(args.slug)
         _print(p)
+    elif args.cmd == "set-status":
+        init()
+        set_plugin_status(args.slug, args.status, error=args.error)
+        _print(get_plugin(args.slug))
 
 
 if __name__ == "__main__":
