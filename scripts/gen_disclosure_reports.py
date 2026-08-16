@@ -12,8 +12,10 @@ import argparse, json, os, re, sqlite3, datetime
 from collections import defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB = os.path.join(ROOT, "db", "wp-forge.db")
-OUT = os.path.join(ROOT, "reports")
+# Artifacts (db, reports) honor WP_FORGE_DATA_DIR; defaults to the repo folder.
+DATA = os.path.expanduser(os.environ.get("WP_FORGE_DATA_DIR") or ROOT)
+DB = os.path.join(DATA, "db", "wp-forge.db")
+OUT = os.path.join(DATA, "reports")
 DATE = "2026-08-02"  # discovery date (deterministic; no wall-clock)
 
 

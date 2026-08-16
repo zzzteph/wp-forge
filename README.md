@@ -19,6 +19,15 @@ Everything wp-forge produces stays inside the repo folder:
 | Per-plugin run log | `knowledge/<slug>/notifications.log` |
 | Durable database (what's been analyzed, every finding) | `db/wp-forge.db` |
 
+These paths are inside the repo folder by default. To put results somewhere else —
+handy when wp-forge runs as an installed plugin, so they don't land in the hidden
+`~/.claude/plugins` cache — set `WP_FORGE_DATA_DIR`, or pass `--output-dir` to the
+orchestrator (below):
+
+```bash
+export WP_FORGE_DATA_DIR=~/wp-forge-data     # db, reports, pocs, logs, knowledge go here
+```
+
 A finding is only recorded if it is high or critical, so an empty result for a
 plugin is normal.
 
@@ -87,9 +96,45 @@ python orchestrate.py --skill critical --window week
 
 If a plugin stalls, errors, or gets interrupted, it is skipped and the run moves
 on. You can stop and re-run at any time; the database tracks what is done, so it
-continues from where it left off. Useful flags: `--dry-run` to preview, `--timeout
-<seconds>` to cap each plugin, `--window all` for the whole catalog, and
-`--skill full` to run the complete pipeline rather than a focused mode.
+continues from where it left off. Useful flags: `--output-dir <path>` to choose
+where all artifacts are written, `--dry-run` to preview, `--timeout <seconds>` to
+cap each plugin, `--window all` for the whole catalog, and `--skill full` to run
+the complete pipeline rather than a focused mode.
+
+## Examples
+
+Inside Claude Code:
+
+```
+/wp-forge woocommerce           # analyze one plugin, full pipeline
+/wp-forge:sqli today            # today's updates, SQL injection only
+/wp-forge:critical week         # last 7 days, unauthenticated critical bugs
+```
+
+Unattended, from a shell (one session per plugin):
+
+```bash
+# This week's critical bugs, results written to a visible folder
+python orchestrate.py --skill critical --window week --output-dir ~/wp-forge-data
+
+# See what it would analyze without launching anything
+python orchestrate.py --skill sqli --window month --dry-run
+
+# The whole catalog, 20-minute cap per plugin, full pipeline
+python orchestrate.py --skill full --window all --timeout 1200 --output-dir ~/wp-forge-data
+```
+
+After a run, look at the results:
+
+```bash
+python scripts/wpdb.py summary                      # counts: analyzed, findings by severity
+python scripts/wpdb.py findings --min-sev HIGH      # every high/critical finding
+ls reports/*/                                       # the advisory writeups
+python pocs/<slug>/<finding-id>/poc.py              # re-prove a finding in Docker
+```
+
+(If you set `--output-dir` / `WP_FORGE_DATA_DIR`, the `reports/` and `pocs/`
+folders are under that path.)
 
 ## Notes
 

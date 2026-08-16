@@ -60,14 +60,14 @@ if _SLUG_ARG:
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import wpdb  # noqa: E402
-from common import (ROOT, TARGET_DIR, STATE_DIR, configure_stdio,  # noqa: E402
+from common import (DATA_ROOT, TARGET_DIR, STATE_DIR, configure_stdio,  # noqa: E402
                     eprint, now_iso)
 import repo  # noqa: E402  (reuse detect_shape)
 
 configure_stdio()
 
 API = "https://api.wordpress.org/plugins/info/1.2/"
-ARCHIVE_DIR = ROOT / "archives"
+ARCHIVE_DIR = DATA_ROOT / "archives"
 UA = "wp-forge/1.0 (+https://wordpress.org/plugins/)"
 
 # Hang guards — a single big/slow plugin must never stall the pipeline. Each is a

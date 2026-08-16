@@ -13,8 +13,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-# --- Paths (all relative to this copy of the repo) --------------------------
+# --- Paths ------------------------------------------------------------------
+# ROOT is this copy of the code (scripts/, opt/, sast/, config.yaml …).
 ROOT = Path(__file__).resolve().parent.parent
+
+# DATA_ROOT is where run ARTIFACTS go: db/, logs/, reports/, pocs/, knowledge/,
+# and the disposable target/ + state/ + archives/ scratch. It defaults to ROOT,
+# but WP_FORGE_DATA_DIR redirects it — e.g. so an installed plugin writes to a
+# visible folder instead of the hidden ~/.claude/plugins/... cache (which is also
+# wiped on every plugin update). Code is read from ROOT; results are written here.
+DATA_ROOT = Path(os.environ.get("WP_FORGE_DATA_DIR") or ROOT).expanduser().resolve()
 
 
 def target_slug(value: str) -> str:
@@ -47,16 +55,16 @@ def target_slug(value: str) -> str:
 _SLUG = target_slug(os.environ.get("SECANAL_TARGET")
                     or os.environ.get("SECANAL_TARGET_REPO") or "")
 
-KNOWLEDGE_ROOT = ROOT / "knowledge"   # durable, committable per-target model
+KNOWLEDGE_ROOT = DATA_ROOT / "knowledge"   # per-target model + findings + notifications.log
 if _SLUG:
-    TARGET_DIR = ROOT / "target" / _SLUG      # the cloned target repository
-    STATE_DIR = ROOT / "state" / _SLUG        # ephemeral per-target scratch
-    KNOWLEDGE_DIR = KNOWLEDGE_ROOT / _SLUG     # model.json + knowledge docs + findings
+    TARGET_DIR = DATA_ROOT / "target" / _SLUG      # the cloned target repository
+    STATE_DIR = DATA_ROOT / "state" / _SLUG        # ephemeral per-target scratch
+    KNOWLEDGE_DIR = KNOWLEDGE_ROOT / _SLUG          # model.json + knowledge docs + findings
 else:
-    TARGET_DIR = ROOT / "target"
-    STATE_DIR = ROOT / "state"
+    TARGET_DIR = DATA_ROOT / "target"
+    STATE_DIR = DATA_ROOT / "state"
     KNOWLEDGE_DIR = KNOWLEDGE_ROOT
-LOG_DIR = ROOT / "logs"
+LOG_DIR = DATA_ROOT / "logs"
 
 
 def configure_stdio() -> None:

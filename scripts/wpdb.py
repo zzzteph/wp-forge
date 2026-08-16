@@ -34,11 +34,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import ROOT, now_iso, sev_rank, configure_stdio  # noqa: E402
+from common import DATA_ROOT, now_iso, sev_rank, configure_stdio  # noqa: E402
 
 configure_stdio()
 
-DB_DIR = ROOT / "db"
+DB_DIR = DATA_ROOT / "db"
 DB_PATH = DB_DIR / "wp-forge.db"
 
 # Plugin lifecycle:

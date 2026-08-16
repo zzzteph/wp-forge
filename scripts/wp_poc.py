@@ -46,7 +46,7 @@ if _SLUG:
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import wpdb  # noqa: E402
-from common import ROOT, TARGET_DIR, configure_stdio, eprint  # noqa: E402
+from common import DATA_ROOT, TARGET_DIR, configure_stdio, eprint  # noqa: E402
 
 configure_stdio()
 
@@ -318,7 +318,7 @@ def scaffold(slug: str, finding_id: str, port: int = 8899) -> dict:
         raise SystemExit(f"finding {finding_id} not found for plugin {slug} in the DB")
     plugin = wpdb.get_plugin(slug) or {}
 
-    out_dir = ROOT / "pocs" / slug / finding_id      # each plugin gets its own folder; each finding a subfolder
+    out_dir = DATA_ROOT / "pocs" / slug / finding_id  # each plugin gets its own folder; each finding a subfolder
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # copy the exact plugin source under test (self-contained bundle)

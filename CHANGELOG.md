@@ -5,6 +5,25 @@ All notable changes to **wp-forge** are documented here. The format follows
 [Semantic Versioning](https://semver.org). The version of record is
 [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json).
 
+## [0.8.1] — 2026-08-16
+
+### Changed
+- **README examples** — added a worked "Examples" section: focused slash-command
+  runs, unattended `orchestrate.py` invocations (with `--output-dir` / `--dry-run` /
+  `--timeout`), and the commands to inspect results afterward (`wpdb.py summary` /
+  `findings`, `reports/`, running a PoC bundle).
+
+## [0.8.0] — 2026-08-16
+
+### Added
+- **Configurable artifact folder (`WP_FORGE_DATA_DIR` + `orchestrate.py --output-dir`).**
+  All run artifacts — `db/`, `logs/`, `reports/`, `pocs/`, `knowledge/`, and the
+  `target/`/`state/`/`archives/` scratch — now honor a single data-root env var,
+  defaulting to the repo folder. Set `WP_FORGE_DATA_DIR` (or pass `--output-dir` to
+  the orchestrator, which exports it to every session it launches) to keep results
+  in a visible location instead of the hidden `~/.claude/plugins/...` cache (which is
+  also wiped on plugin update). Code is still read from the repo; only outputs move.
+
 ## [0.7.1] — 2026-08-16
 
 ### Changed

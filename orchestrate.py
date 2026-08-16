@@ -126,15 +126,21 @@ def run_session(prompt: str, claude: str, model: str, timeout: int, log_path: Pa
         raise SystemExit(2)
 
 
+def data_root() -> Path:
+    """Where artifacts go — honors WP_FORGE_DATA_DIR (set from --output-dir)."""
+    return Path(os.environ.get("WP_FORGE_DATA_DIR") or ROOT).expanduser().resolve()
+
+
 def cleanup(slug: str):
     """Guarantee teardown after every session: nuke the sandbox and wipe this
     plugin's disposable scratch, so the next plugin starts clean even on a kill."""
     subprocess.run([PY, str(ROOT / "scripts" / "verify.py"), "nuke"],
                    cwd=str(ROOT), capture_output=True, text=True)
     import shutil
+    data = data_root()
     for sub in ("archives", "target/wordpress.org/plugins"):
         try:
-            shutil.rmtree(ROOT / sub / slug, ignore_errors=True)
+            shutil.rmtree(data / sub / slug, ignore_errors=True)
         except Exception:
             pass
 
@@ -160,13 +166,24 @@ def main():
     ap.add_argument("--claude", default=os.environ.get("CLAUDE_BIN", "claude"),
                     help="path to the Claude Code CLI (default: claude)")
     ap.add_argument("--model", default="", help="optional --model to pass through")
+    ap.add_argument("--output-dir", default="",
+                    help="folder for ALL artifacts (db, logs, reports, pocs, knowledge, "
+                         "scratch). Defaults to the repo folder; set this to keep results "
+                         "out of the hidden ~/.claude/plugins cache. Sets WP_FORGE_DATA_DIR "
+                         "for every session it launches.")
     ap.add_argument("--no-sync", action="store_true",
                     help="skip the catalog sync (use the DB as-is)")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the plan and launch nothing")
     args = ap.parse_args()
 
-    (ROOT / "logs").mkdir(exist_ok=True)
+    # Redirect all artifacts before anything touches the DB; children inherit the env.
+    if args.output_dir:
+        os.environ["WP_FORGE_DATA_DIR"] = str(Path(args.output_dir).expanduser().resolve())
+    data = data_root()
+    logs = data / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    print(f"[orch] artifacts -> {data}")
 
     # Preflight: ensure DB, retire poison-pills from prior runs, refresh the window.
     wpdb("init")
@@ -193,7 +210,7 @@ def main():
             attempted.add(slug)
             n += 1
             ts = time.strftime("%Y%m%d-%H%M%S")
-            log = ROOT / "logs" / f"orch-{slug}-{ts}.log"
+            log = logs / f"orch-{slug}-{ts}.log"
             if args.dry_run:
                 print(f"[orch] ({n}) would analyze {slug} → {log.name}")
                 continue
