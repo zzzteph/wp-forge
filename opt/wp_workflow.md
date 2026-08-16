@@ -157,11 +157,23 @@ Agent calls in a single message. No parallelism anywhere; doing the work inline
 ## 2. Preflight — refresh the catalog & pick the batch
 ```bash
 python scripts/wpdb.py init                                  # ensure the DB exists
+python scripts/wpdb.py reap-stale                            # clear plugins a prior cycle died on (see below)
 python scripts/wp.py sync --browse updated --pages <wp.catalog_pages> --per-page <wp.per_page>
 python scripts/wp.py next-batch --count <wp.batch_size>      # plugins due for (re)analysis, newest first
 ```
 `next-batch` returns plugins never analyzed, or whose current version differs
 from `analyzed_version`, ordered by `last_updated`.
+
+**Poison-pill protection.** Mark each plugin `analyzing`
+(`wpdb.py set-status --slug <slug> --status analyzing`) *before* you start its
+analysis (§3). If a cycle dies mid-plugin — a crash, or a platform **cyber
+safeguard** killing the session on scary-looking code (e.g. a file-upload handler)
+— that plugin is left `analyzing`; the next cycle's `reap-stale` bumps its attempt
+count and, after 2 aborts, marks it `skipped` so it stops killing every cycle and
+the drain moves on. This is why a safeguard trip on one plugin can't stall the run
+(the outer `drain.sh` relaunches, `reap-stale` retires the offender, progress
+continues). A safeguard interruption is a platform decision you cannot code around
+— you just skip past it; do not retry it in-session or investigate the shutdown.
 
 **Scoping the run:**
 - If the user named a specific `<slug>` (e.g. `/wp-forge woocommerce`), skip
@@ -211,6 +223,23 @@ That empty result is the only "am I done?" signal — you never ask. This is
 resumable: if the run is interrupted, starting again continues from what's left.
 The one-batch-then-stop rule below (§10) applies only to a bare, unscoped
 `/wp-forge` (no window) — window/`all`/`wp.drain` runs always drain.
+
+**One session is context-bounded — that is expected, not a failure.** A single run
+analyzes as many plugins as its context holds (often a few dozen) and then stops
+cleanly; the DB has recorded each one, so nothing is lost or repeated. To cover a
+scope larger than one session (thousands of plugins) unattended, do **not** try to
+cram it into one session or spin up an in-session driver — use an **outer runner**
+that relaunches fresh sessions from the DB until the queue is empty. Two ship with
+the repo:
+- **`python orchestrate.py --skill <skill> --window <window>`** — *most reliable.*
+  A programmatic orchestrator that runs a **dedicated headless session per plugin**
+  with a hard per-plugin timeout; whatever one session does (finishes, stalls,
+  safeguard-kill, error) it's bounded to that plugin and the orchestrator moves on.
+  Preferred for large or unattended drains.
+- **`./drain.sh <skill> <window>`** / **`.\drain.ps1 -Skill <skill> -Window <window>`**
+  — lighter: relaunches whole cycles (each session does as many plugins as its
+  context holds). Fewer startups, but a session can stop early.
+Both resume from the DB; neither is an in-session improvisation.
 
 ## 3. Per-plugin preflight — bind the plugin & download it
 Every plugin is keyed like the rest of the pipeline: its "repo url" is

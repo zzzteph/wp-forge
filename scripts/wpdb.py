@@ -118,7 +118,38 @@ def init() -> dict:
             CREATE INDEX IF NOT EXISTS idx_findings_sev     ON findings (severity);
             """
         )
+        # Migration: attempts counter (aborted-cycle / poison-pill tracking).
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(plugins)")}
+        if "attempts" not in cols:
+            c.execute("ALTER TABLE plugins ADD COLUMN attempts INTEGER DEFAULT 0")
     return {"db": str(DB_PATH), "initialized": True}
+
+
+def reap_stale(max_attempts: int = 2) -> dict:
+    """Reap plugins left mid-flight by an aborted cycle (crash, or a platform
+    safeguard killing the session). A plugin still marked `analyzing` when a new
+    cycle starts means a prior cycle died on it: bump its attempts, and once it has
+    burned `max_attempts` retries, mark it `skipped` so it stops poisoning the
+    queue (`next_batch` never returns `skipped`). Otherwise mark it `error` for one
+    more try. Returns what was reaped so the caller can log it."""
+    init()
+    retried, skipped = [], []
+    with _connect() as c:
+        rows = c.execute(
+            "SELECT slug, attempts FROM plugins WHERE status='analyzing'").fetchall()
+        for r in rows:
+            n = (r["attempts"] or 0) + 1
+            if n >= max_attempts:
+                c.execute("UPDATE plugins SET status='skipped', attempts=?, "
+                          "error='aborted x'||?||' (crash/safeguard) — skipped', updated=? "
+                          "WHERE slug=?", (n, n, now_iso(), r["slug"]))
+                skipped.append(r["slug"])
+            else:
+                c.execute("UPDATE plugins SET status='error', attempts=?, "
+                          "error='prior cycle aborted mid-analysis', updated=? "
+                          "WHERE slug=?", (n, now_iso(), r["slug"]))
+                retried.append(r["slug"])
+    return {"reaped": len(retried) + len(skipped), "retry": retried, "skipped": skipped}
 
 
 # --- Plugin catalog ---------------------------------------------------------
@@ -324,6 +355,7 @@ def main() -> None:
     p = sub.add_parser("show"); p.add_argument("--slug", required=True)
     p = sub.add_parser("set-status"); p.add_argument("--slug", required=True)
     p.add_argument("--status", required=True); p.add_argument("--error")
+    p = sub.add_parser("reap-stale"); p.add_argument("--max-attempts", type=int, default=2)
     args = ap.parse_args()
 
     if args.cmd == "init":
@@ -353,6 +385,8 @@ def main() -> None:
         init()
         set_plugin_status(args.slug, args.status, error=args.error)
         _print(get_plugin(args.slug))
+    elif args.cmd == "reap-stale":
+        _print(reap_stale(args.max_attempts))
 
 
 if __name__ == "__main__":

@@ -5,6 +5,31 @@ All notable changes to **wp-forge** are documented here. The format follows
 [Semantic Versioning](https://semver.org). The version of record is
 [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json).
 
+## [0.7.0] — 2026-08-16
+
+### Added
+- **`orchestrate.py` — per-plugin orchestrator (maximum reliability).** Runs a
+  *dedicated headless Claude session for each plugin*, one at a time, with a hard
+  per-plugin wall-clock timeout. Whatever a single session does — finishes, stalls,
+  gets safeguard-killed, errors — the orchestrator kills it at the deadline, tears
+  down the sandbox, records the outcome, and moves to the next plugin. Because the
+  orchestrator holds no model context, it drains scopes no single session could;
+  context exhaustion and cross-plugin bleed are structurally impossible. Fully
+  resumable via the DB; `--dry-run`, `--timeout`, `--max-plugins`, `--model`,
+  `--skill`, `--window` supported. This is the recommended way to run a large or
+  unattended drain — effectively "run wp-forge for each plugin separately".
+- **Poison-pill protection (`wpdb.py reap-stale` + `attempts` counter).** A plugin
+  left `analyzing` by a cycle that died mid-analysis — a crash, or a platform cyber
+  safeguard killing the session on scary-looking code (e.g. a file-upload handler) —
+  is reaped at the next cycle's preflight: retried once, then marked `skipped` after
+  2 aborts so it can't kill every cycle. A safeguard trip on one plugin no longer
+  stalls the whole run — the offender is retired and the drain continues.
+- **`drain.sh` / `drain.ps1` — outer drain runner.** A lighter alternative to the
+  orchestrator: relaunches fresh whole cycles back-to-back (each session analyzes as
+  many plugins as its context holds) until the scoped queue is empty. Fewer session
+  startups, but a session can stop early; use the orchestrator for full isolation.
+  Parameterized by skill (`critical`/`sqli`/`unauth`/`path-trav`/`full`) and window.
+
 ## [0.6.0] — 2026-08-16
 
 ### Changed
