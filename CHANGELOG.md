@@ -5,6 +5,14 @@ All notable changes to **wp-forge** are documented here. The format follows
 [Semantic Versioning](https://semver.org). The version of record is
 [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json).
 
+## [0.7.1] — 2026-08-16
+
+### Changed
+- **README rewrite** — simpler run instructions (single plugin / window / focused
+  modes / the `orchestrate.py` runner) and a "Where results are stored" table up top
+  (`reports/run-<timestamp>/<slug>-<version>.md`, `pocs/<slug>/<finding-id>/`,
+  `knowledge/<slug>/notifications.log`, `db/wp-forge.db`).
+
 ## [0.7.0] — 2026-08-16
 
 ### Added
