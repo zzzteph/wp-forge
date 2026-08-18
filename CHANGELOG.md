@@ -5,6 +5,15 @@ All notable changes to **wp-forge** are documented here. The format follows
 [Semantic Versioning](https://semver.org). The version of record is
 [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json).
 
+## [0.9.0] — 2026-08-17
+
+### Added
+- **Live progress in the orchestrator.** Each per-plugin session now prints a
+  heartbeat every 30s (`--heartbeat` to tune) showing elapsed time and the latest
+  line from that session's log, so you can see it's alive and roughly what it's
+  doing instead of a silent wait. Sessions run with `--verbose` so the log carries
+  real activity, and the start banner prints a `tail -f <dir>/logs/orch-*.log` hint.
+
 ## [0.8.1] — 2026-08-16
 
 ### Changed

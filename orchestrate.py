@@ -100,10 +100,27 @@ def _kill_tree(p: subprocess.Popen):
         pass
 
 
-def run_session(prompt: str, claude: str, model: str, timeout: int, log_path: Path) -> int:
-    """Launch one headless Claude session, bounded by a hard timeout. Returns the
-    exit code, or 124 if it was killed at the deadline. Never raises."""
-    cmd = [claude, "-p", prompt, "--dangerously-skip-permissions"]
+def _tail(path: Path, nbytes: int = 4096) -> str:
+    """Last non-empty line of the session log, for heartbeats (cheap tail read)."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - nbytes))
+            chunk = f.read().decode("utf-8", "replace")
+        lines = [ln.strip() for ln in chunk.splitlines() if ln.strip()]
+        return lines[-1][:100] if lines else "(starting…)"
+    except Exception:
+        return ""
+
+
+def run_session(prompt: str, claude: str, model: str, timeout: int,
+                log_path: Path, heartbeat: int = 30) -> int:
+    """Launch one headless Claude session, bounded by a hard timeout. Prints a
+    heartbeat every `heartbeat` seconds so you can see it's alive and what it's
+    doing. Returns the exit code, or 124 if killed at the deadline. Never raises."""
+    # --verbose streams the turn (tool calls, progress) into the log, so the
+    # heartbeat's tail line shows real activity instead of a silent wait.
+    cmd = [claude, "-p", prompt, "--verbose", "--dangerously-skip-permissions"]
     if model:
         cmd += ["--model", model]
     popen_kw = {}
@@ -111,19 +128,30 @@ def run_session(prompt: str, claude: str, model: str, timeout: int, log_path: Pa
         popen_kw["start_new_session"] = True          # own process group → killpg
     else:
         popen_kw["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    log = open(log_path, "w", encoding="utf-8", errors="replace")
     try:
-        with open(log_path, "w", encoding="utf-8", errors="replace") as log:
-            p = subprocess.Popen(cmd, cwd=str(ROOT), stdout=log,
-                                 stderr=subprocess.STDOUT, **popen_kw)
-            try:
-                return p.wait(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                _kill_tree(p)
-                return 124
+        p = subprocess.Popen(cmd, cwd=str(ROOT), stdout=log,
+                             stderr=subprocess.STDOUT, **popen_kw)
     except FileNotFoundError:
+        log.close()
         print(f"[orch] FATAL: '{claude}' not found — install Claude Code or pass "
               f"--claude <path>.", file=sys.stderr)
         raise SystemExit(2)
+    start = time.monotonic()
+    try:
+        while True:
+            remaining = timeout - (time.monotonic() - start)
+            if remaining <= 0:
+                _kill_tree(p)
+                return 124
+            try:
+                return p.wait(timeout=min(heartbeat, remaining))
+            except subprocess.TimeoutExpired:
+                el = int(time.monotonic() - start)
+                print(f"[orch]     .. {el // 60}m{el % 60:02d}s  {_tail(log_path)}",
+                      flush=True)
+    finally:
+        log.close()
 
 
 def data_root() -> Path:
@@ -166,6 +194,8 @@ def main():
     ap.add_argument("--claude", default=os.environ.get("CLAUDE_BIN", "claude"),
                     help="path to the Claude Code CLI (default: claude)")
     ap.add_argument("--model", default="", help="optional --model to pass through")
+    ap.add_argument("--heartbeat", type=int, default=30,
+                    help="seconds between progress heartbeats while a session runs (default: 30)")
     ap.add_argument("--output-dir", default="",
                     help="folder for ALL artifacts (db, logs, reports, pocs, knowledge, "
                          "scratch). Defaults to the repo folder; set this to keep results "
@@ -195,6 +225,9 @@ def main():
     total = pending_count(args.window)
     print(f"[orch] skill={args.skill} window={args.window} pending={total} "
           f"timeout={args.timeout}s{' (DRY-RUN)' if args.dry_run else ''}")
+    if not args.dry_run:
+        print(f"[orch] heartbeat every {args.heartbeat}s; watch a session live with:  "
+              f"tail -f {logs}/orch-*.log", flush=True)
 
     attempted, analyzed, errored, skipped, n = set(), 0, 0, 0, 0
     while True:
@@ -215,10 +248,11 @@ def main():
                 print(f"[orch] ({n}) would analyze {slug} → {log.name}")
                 continue
             wpdb("set-status", "--slug", slug, "--status", "analyzing")
-            print(f"[orch] ({n}/{total}) {slug} → session (≤{args.timeout}s) {log.name}")
+            print(f"[orch] ({n}/{total}) {slug} → session (≤{args.timeout}s)  "
+                  f"log: {log}", flush=True)
             t0 = time.monotonic()
             rc = run_session(build_prompt(slug, args.skill), args.claude,
-                             args.model, args.timeout, log)
+                             args.model, args.timeout, log, args.heartbeat)
             cleanup(slug)
             # a still-'analyzing' plugin means the session didn't finish it →
             # reap-stale converts it to error (retry next run) or skipped (>=N aborts)
